@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Local Chat App</title>
+  
+  <!-- Import Socket.io Client from CDN -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  
+  <style>
+    :root {
+      --bg-color: #f4f4f9;
+      --primary: #4f46e5;
+      --text: #333;
+      --white: #ffffff;
+    }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .app-container {
+      background: var(--white);
+      width: 400px;
+      height: 600px;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .header {
+      background: var(--primary);
+      color: var(--white);
+      padding: 20px;
+      text-align: center;
+      font-size: 1.2rem;
+      font-weight: bold;
+    }
+    /* Login Screen */
+    #login-screen {
+      display: flex;
+      flex-direction: column;
+      padding: 40px 20px;
+      gap: 15px;
+    }
+    input {
+      padding: 12px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 1rem;
+    }
+    button {
+      background: var(--primary);
+      color: var(--white);
+      border: none;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    button:hover {
+      background: #4338ca;
+    }
+    /* Chat Screen */
+    #chat-screen {
+      display: none;
+      flex-direction: column;
+      height: 100%;
+    }
+    .chat-box {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: #fafafa;
+    }
+    .message {
+      padding: 10px 15px;
+      border-radius: 20px;
+      max-width: 75%;
+      word-wrap: break-word;
+    }
+    .message.self {
+      background: var(--primary);
+      color: var(--white);
+      align-self: flex-end;
+      border-bottom-right-radius: 2px;
+    }
+    .message.other {
+      background: #e5e7eb;
+      color: var(--text);
+      align-self: flex-start;
+      border-bottom-left-radius: 2px;
+    }
+    .meta-data {
+      font-size: 0.75rem;
+      opacity: 0.7;
+      margin-bottom: 4px;
+      display: block;
+    }
+    .input-area {
+      display: flex;
+      padding: 15px;
+      background: var(--white);
+      border-top: 1px solid #eee;
+      gap: 10px;
+    }
+    .input-area input {
+      flex: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+    <div class="header" id="header-title">Welcome to Chat</div>
+
+    <!-- LOGIN SCREEN -->
+    <div id="login-screen">
+      <input type="text" id="username-input" placeholder="Enter your username..." />
+      <input type="text" id="room-input" placeholder="Enter room name (e.g. Gaming)" />
+      <button onclick="joinChat()">Join Room</button>
+    </div>
+
+    <!-- CHAT SCREEN -->
+    <div id="chat-screen">
+      <div class="chat-box" id="chat-box">
+        <!-- Messages will appear here -->
+      </div>
+      <div class="input-area">
+        <input type="text" id="message-input" placeholder="Type a message..." onkeypress="handleKeyPress(event)" />
+        <button onclick="sendMessage()">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 1. Connect to your local Node.js server
+    // Make sure your backend is running on port 5000!
+    const socket = io('http://localhost:5000');
+
+    let currentUser = '';
+    let currentRoom = '';
+
+    // DOM Elements
+    const loginScreen = document.getElementById('login-screen');
+    const chatScreen = document.getElementById('chat-screen');
+    const headerTitle = document.getElementById('header-title');
+    const chatBox = document.getElementById('chat-box');
+    const messageInput = document.getElementById('message-input');
+
+    // 2. Join Room Logic
+    function joinChat() {
+      const username = document.getElementById('username-input').value.trim();
+      const room = document.getElementById('room-input').value.trim();
+
+      if (username !== '' && room !== '') {
+        currentUser = username;
+        currentRoom = room;
+
+        // Switch UI to chat mode
+        loginScreen.style.display = 'none';
+        chatScreen.style.display = 'flex';
+        headerTitle.innerText = `Room: ${currentRoom}`;
+
+        // Tell the server we joined
+        socket.emit('join_room', currentRoom);
+      } else {
+        alert("Please enter both a username and a room!");
+      }
+    }
+
+    // 3. Send Message Logic
+    function sendMessage() {
+      const text = messageInput.value.trim();
+      
+      if (text !== '') {
+        const messageData = {
+          username: currentUser,
+          room: currentRoom,
+          text: text,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+
+        // Send to backend
+        socket.emit('send_message', messageData);
+        
+        // Clear input box
+        messageInput.value = '';
+      }
+    }
+
+    // Allow sending message with "Enter" key
+    function handleKeyPress(event) {
+      if (event.key === 'Enter') {
+        sendMessage();
+      }
+    }
+
+    // 4. Receive Message Logic
+    socket.on('receive_message', (data) => {
+      // Create a new div for the incoming message
+      const messageElement = document.createElement('div');
+      
+      // Check if this message was sent by us or someone else
+      if (data.username === currentUser) {
+        messageElement.className = 'message self';
+        messageElement.innerHTML = `<span class="meta-data">You • ${data.timestamp || 'Now'}</span>${data.text}`;
+      } else {
+        messageElement.className = 'message other';
+        messageElement.innerHTML = `<span class="meta-data">${data.username} • ${data.timestamp || 'Now'}</span>${data.text}`;
+      }
+
+      // Append to chat box and scroll to bottom
+      chatBox.appendChild(messageElement);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    });
+  </script>
+
+</body>
+</html>
